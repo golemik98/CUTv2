@@ -24,7 +24,6 @@ else
 	Q := @
 endif
 
-
 # SECTION PROJECT
 SDIR := ./src
 IDIR := ./include
@@ -91,7 +90,7 @@ $(TEST_BIN): $(TOBJ)
 
 .PHONY:memcheck
 memcheck: test
-	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1 $(TEST_BIN)
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1 -q $(TEST_BIN)
 
 .PHONY:clean 
 clean:
@@ -131,6 +130,7 @@ help:
 	@echo "    test              - build only test"
 	@echo "    regression        - build and run all tests"
 	@echo "    memcheck          - build test and run them using valgrind"
+	@echo "    clean             - remove all generated files"
 	@echo -e
 	@echo "Makefile supports Verbose mode when V=1 (make all V=1)"
 	@echo "Makefile supports Debug mode when DEBUG=1 (make all DEBUG=1)"

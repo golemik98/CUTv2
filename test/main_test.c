@@ -1,10 +1,11 @@
 #include <assert.h>
-#include <foo.h>
 #include <stdlib.h>
+#include "reader.h"
+#include "foo.h"
 
 int main(void)
 {
-    assert(1);
+    reader_readProcStat();
 
     return 0;
 }
