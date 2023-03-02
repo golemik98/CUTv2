@@ -6,6 +6,7 @@
 int main(void)
 {
     reader_readProcStat();
+    // reader_printFile();
 
     return 0;
 }
