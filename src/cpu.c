@@ -1,10 +1,10 @@
-#include "cpu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <stdint.h>
+#include "cpu.h"
+#include "logger.h"
 
 #define USER_IDX    0
 #define NICE_IDX    1
@@ -18,65 +18,92 @@
 #define GUEST_N_IDX 9
 #define DATA_QTY    10
 
+#define MAGIC_NUMBER 0xDEADBEEF
+
 typedef struct cpuInfoS
 {
     uint32_t magicNumber;
     uint8_t index;
     uint32_t data[10];
     uint32_t prevData[10];
-    // void (*printCpuData)(cpuInfoS*);
-    // void (*refillCpuData)(cpuInfoS*);
-    // void (*countUsage)(cpuInfoS*);
 }cpuInfoS;
 
-// void        cpu_deleteObject(cpuInfoS* cpuPtr);
-// void        cpu_printCpuData(cpuInfoS* cpuPtr, bool new);
-// void        cpu_refillCpuData(cpuInfoS* cpuPtr);
-// void        cpu_countUsage(cpuInfoS* cpuPtr);
-
-cpuInfoS* cpu_newObject()
+typedef struct CpuAll
 {
-    cpuInfoS* cpuPtr = (cpuInfoS*)malloc(sizeof(*cpuPtr));
-    if (cpuPtr == NULL)
+    uint32_t magicNumber;
+    uint8_t coreQty;
+
+    cpuInfoS* singleCore[];
+}CpuAll;
+
+CpuAll* cpu_init(uint8_t coreQty)
+{
+    if (coreQty == 0)
+    {
+        return NULL;
+    }
+
+    CpuAll* const cpus = calloc(1, sizeof(*cpus) + sizeof(cpuInfoS) * coreQty);
+    if (cpus == NULL)
     {
         return NULL;
     }
     
-    memset(cpuPtr, 0, sizeof(*cpuPtr));
+    cpus->coreQty = coreQty;
+    cpus->magicNumber = MAGIC_NUMBER;
 
-    cpuPtr->magicNumber = 0xDEADBEEF;
-    // cpuPtr->printCpuData = cpu_printCpuData;
-    // cpuPtr->refillCpuData = cpu_refillCpuData;
-    // cpuPtr->countUsage = cpu_countUsage;
-
-    return cpuPtr;
+    return cpus;
 }
 
-void cpu_deleteObject(cpuInfoS* cpuPtr)
+bool cpu_deleteObject(CpuAll* cpus)
 {
-    if (cpuPtr != NULL)
+    if (cpus == NULL || !cpu_isActive(cpus))
     {
-        free(cpuPtr);
+        logger_debug("Wrong obj to free\n");
+        return false;
     }
+
+    free(cpus);
+    return true;
 }
 
-void cpu_printCpuData(cpuInfoS* cpuPtr, bool new)
+bool cpu_isActive(CpuAll* cpu)
 {
+    if (cpu == NULL)
+        return false;
+
+    return cpu->magicNumber == MAGIC_NUMBER;    
+}
+
+bool cpu_printCpuData(cpuInfoS* cpuPtr, bool new)
+{
+    if (cpuPtr == NULL)
+    {
+        return false;
+    }
+    
     printf("cpu[%d]: ", cpuPtr->index);
     for (size_t i = 0; i < DATA_QTY; i++)
     {
         (new) ? printf("%u ", cpuPtr->data[i]) : printf("%u ", cpuPtr->prevData[i]);
     }
     printf("\n");
+    
+    return true;
 }
 
-void cpu_refillCpuData(cpuInfoS* cpuPtr)
+bool cpu_refillCpuData(cpuInfoS* cpuPtr)
 {
     FILE* file;
     char strings[10][12] = {0};
     file = fopen("/proc/stat", "r");
 
-    (void)fscanf(file, "%*s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s", 
+    if (file == NULL)
+    {
+        return false;
+    }
+
+    int result = fscanf(file, "%*s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s", 
     strings[USER_IDX],
     strings[NICE_IDX],
     strings[SYSTEM_IDX],
@@ -88,21 +115,26 @@ void cpu_refillCpuData(cpuInfoS* cpuPtr)
     strings[GUEST_IDX],
     strings[GUEST_N_IDX]);
 
+    if (result == 0)
+    {
+        fclose(file);
+        return false;
+    }
     fclose(file);
 
     memcpy(&cpuPtr->prevData, &cpuPtr->data, sizeof(cpuPtr->data));
-    
     for (size_t i = 0; i < DATA_QTY; i++)
     {
         cpuPtr->data[i] = atoi(strings[i]);
     }
+
+    return true;
 }
 
-void cpu_countUsage(cpuInfoS* cpuPtr)
+bool cpu_countUsage(cpuInfoS* cpuPtr)
 {
     uint32_t prevIdle = cpuPtr->prevData[IDLE_IDX] + cpuPtr->prevData[IOWAIT_IDX];
     uint32_t idle = cpuPtr->data[IDLE_IDX] + cpuPtr->data[IOWAIT_IDX];
-    printf("Prev idle: %u, idle: %u", prevIdle, idle);
 
     uint32_t prevNonIdle = cpuPtr->prevData[USER_IDX] + 
         cpuPtr->prevData[NICE_IDX] + 
@@ -116,7 +148,6 @@ void cpu_countUsage(cpuInfoS* cpuPtr)
         cpuPtr->data[IRQ_IDX] + 
         cpuPtr->data[SOFTIRQ_IDX] + 
         cpuPtr->data[STEAL_IDX];
-    printf("PrevNonidle: %u, nonIdle: %u", prevNonIdle, nonIdle);
 
     uint32_t prevTotal = prevIdle + prevNonIdle;    
     uint32_t total = idle + nonIdle;
@@ -126,10 +157,12 @@ void cpu_countUsage(cpuInfoS* cpuPtr)
 
     if (totald == 0)
     {
-        return;
+        return false;
     }
     
     uint8_t cpuPercentageUsage = (totald - idled) / totald;
 
     printf("Usage in %d%%\n", cpuPercentageUsage);
+
+    return true;
 }
